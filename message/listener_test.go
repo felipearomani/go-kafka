@@ -69,8 +69,15 @@ func TestEventListener_Listen(t *testing.T) {
 		},
 	}
 
-	el := NewEventListener("orders", kc, handler, 5*time.Second)
+	cfg := &ListenerConfig{
+		Topic:          "orders",
+		Consumer:       kc,
+		Handler:        handler,
+		HandlerTimeout: 5 * time.Second,
+	}
+	el := NewEventListener(cfg)
 
+	// to finish the infinite FOR loop
 	go func() {
 		<-time.After(time.Second)
 		_ = el.Close()
@@ -115,8 +122,15 @@ func TestEventListener_Listen_Error(t *testing.T) {
 
 	for title, tc := range testCases {
 		t.Run(title, func(t *testing.T) {
-			el := NewEventListener("orders", tc.mockKafkaConsumer, tc.mockMessageHandler, 5*time.Second)
+			cfg := &ListenerConfig{
+				Topic:          "orders",
+				Consumer:       tc.mockKafkaConsumer,
+				Handler:        tc.mockMessageHandler,
+				HandlerTimeout: 5 * time.Second,
+			}
+			el := NewEventListener(cfg)
 
+			// to finish the infinite FOR loop
 			go func() {
 				<-time.After(time.Second)
 				_ = el.Close()

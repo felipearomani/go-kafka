@@ -27,7 +27,13 @@ func main() {
 	}
 
 	handler := &kafkahandler.MyHandler{}
-	l := message.NewEventListener("orders", consumer, handler, 5*time.Second)
+	listenerCfg := &message.ListenerConfig{
+		Topic:          "orders",
+		Consumer:       consumer,
+		Handler:        handler,
+		HandlerTimeout: 5 * time.Second,
+	}
+	l := message.NewEventListener(listenerCfg)
 	if err := l.Listen(); err != nil {
 		log.Fatal(err)
 	}

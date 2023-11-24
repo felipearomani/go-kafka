@@ -19,34 +19,39 @@ type (
 		ReadMessage(timeout time.Duration) (*kafka.Message, error)
 		Close() (err error)
 	}
+
+	ListenerConfig struct {
+		Topic          string
+		Consumer       kafkaConsumer
+		Handler        messageHandler
+		HandlerTimeout time.Duration
+	}
 )
 
 type EventListener struct {
-	topic          string
-	consumer       kafkaConsumer
-	handler        messageHandler
-	handlerTimeOut time.Duration
-	isRunning      bool
-	cancel         chan struct{}
+	config *ListenerConfig
+	cancel chan struct{}
 }
 
-func NewEventListener(topic string, consumer kafkaConsumer, handler messageHandler, handlerTimeout time.Duration) *EventListener {
+func NewEventListener(cfg *ListenerConfig) *EventListener {
 	return &EventListener{
-		topic:          topic,
-		consumer:       consumer,
-		handler:        handler,
-		handlerTimeOut: handlerTimeout,
-		cancel:         make(chan struct{}),
+		config: cfg,
+		cancel: make(chan struct{}),
 	}
 }
 
 func (e *EventListener) Listen() error {
-	err := e.consumer.SubscribeTopics([]string{e.topic}, func(_ *kafka.Consumer, event kafka.Event) error {
-		slog.Info("rebalacing partitions", slog.String("topic", e.topic), slog.String("kafka_info", event.String()))
+	var (
+		consumer = e.config.Consumer
+		topic    = e.config.Topic
+	)
+
+	err := consumer.SubscribeTopics([]string{topic}, func(_ *kafka.Consumer, event kafka.Event) error {
+		slog.Info("rebalacing partitions", slog.String("topic", topic), slog.String("kafka_info", event.String()))
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("erro on subscribe topic [%v]: %w", e.topic, err)
+		return fmt.Errorf("erro on subscribe topic [%v]: %w", topic, err)
 	}
 
 loopMain:
@@ -65,7 +70,13 @@ loopMain:
 }
 
 func (e *EventListener) handleMessage() error {
-	msg, err := e.consumer.ReadMessage(time.Second)
+	var (
+		consumer = e.config.Consumer
+		timeout  = e.config.HandlerTimeout
+		handler  = e.config.Handler
+	)
+
+	msg, err := consumer.ReadMessage(time.Second)
 	if err != nil {
 		if err.(kafka.Error).IsTimeout() {
 			return nil
@@ -73,10 +84,10 @@ func (e *EventListener) handleMessage() error {
 		return fmt.Errorf("error on read message from kafka: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), e.handlerTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	if err := e.handler.Handle(ctx, msg); err != nil {
+	if err := handler.Handle(ctx, msg); err != nil {
 		return fmt.Errorf("error on handle kafka message: %w", err)
 	}
 
@@ -85,7 +96,7 @@ func (e *EventListener) handleMessage() error {
 
 func (e *EventListener) Close() error {
 	e.cancel <- struct{}{}
-	if err := e.consumer.Close(); err != nil {
+	if err := e.config.Consumer.Close(); err != nil {
 		return err
 	}
 
